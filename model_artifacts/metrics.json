@@ -1,0 +1,61 @@
+{
+  "failure_predictor": {
+    "auc_roc": 0.8538,
+    "f1_score": 0.7723,
+    "accuracy": 0.7523,
+    "cv_auc_mean": 0.8225,
+    "cv_auc_std": 0.0091,
+    "n_train": 6633,
+    "n_test": 1659,
+    "features": [
+      "session_duration_minutes",
+      "break_count",
+      "social_media_minutes_before",
+      "task_complexity",
+      "work_style_score",
+      "time_of_day_hour",
+      "day_of_week",
+      "stress_level",
+      "sleep_hours",
+      "distraction_events",
+      "deadline_days_remaining",
+      "previous_completion_rate",
+      "focus_score",
+      "motivation_level",
+      "study_hours_weekly"
+    ]
+  },
+  "work_style_classifier": {
+    "accuracy": 0.8847,
+    "macro_f1": 0.8297,
+    "classes": [
+      "hare",
+      "hybrid",
+      "turtle"
+    ],
+    "n_train": 6000,
+    "n_test": 1500,
+    "features": [
+      "session_duration_minutes",
+      "break_count",
+      "distraction_events",
+      "stress_level",
+      "motivation_level",
+      "previous_completion_rate",
+      "deadline_days_remaining"
+    ]
+  },
+  "distraction_scorer": {
+    "rmse": 0.0079,
+    "r2": 0.9968,
+    "n_train": 6000,
+    "n_test": 1500,
+    "features": [
+      "distraction_events",
+      "social_media_minutes_before",
+      "break_count",
+      "session_duration_minutes",
+      "focus_score"
+    ]
+  }
+}

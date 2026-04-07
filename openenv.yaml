@@ -1,0 +1,6 @@
+name: productivity-copilot-env
+description: An environment where an agent acts as a productivity coach to prevent human task failure.
+version: 0.1.0
+owner: productivity_hacker
+repository: https://github.com/productivity_hacker/productivity-copilot-env
+entrypoint: productivity_env:ProductivityEnv

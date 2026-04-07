@@ -1,0 +1,47 @@
+{
+  "failure_predictor": {
+    "features": [
+      "session_duration_minutes",
+      "break_count",
+      "social_media_minutes_before",
+      "task_complexity",
+      "work_style_score",
+      "time_of_day_hour",
+      "day_of_week",
+      "stress_level",
+      "sleep_hours",
+      "distraction_events",
+      "deadline_days_remaining",
+      "previous_completion_rate",
+      "focus_score",
+      "motivation_level",
+      "study_hours_weekly"
+    ],
+    "threshold": 0.65
+  },
+  "work_style_classifier": {
+    "features": [
+      "session_duration_minutes",
+      "break_count",
+      "distraction_events",
+      "stress_level",
+      "motivation_level",
+      "previous_completion_rate",
+      "deadline_days_remaining"
+    ],
+    "classes": [
+      "hare",
+      "hybrid",
+      "turtle"
+    ]
+  },
+  "distraction_scorer": {
+    "features": [
+      "distraction_events",
+      "social_media_minutes_before",
+      "break_count",
+      "session_duration_minutes",
+      "focus_score"
+    ]
+  }
+}
