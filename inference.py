@@ -1,9 +1,14 @@
 import asyncio
+import contextlib
+import io
 import os
 import textwrap
-from typing import List, Optional
+from types import SimpleNamespace
+from typing import Any, List, Optional
 
 from openai import OpenAI
+
+from openenv.core import EnvClient
 
 from productivity_env import ProductivityAction, ProductivityEnv
 
@@ -12,10 +17,11 @@ API_BASE_URL = os.getenv("API_BASE_URL") or "https://router.huggingface.co/v1"
 MODEL_NAME = os.getenv("MODEL_NAME") or "Qwen/Qwen2.5-72B-Instruct"
 TASK_NAME = os.getenv("PRODUCTIVITY_TASK", "triage")
 BENCHMARK = os.getenv("PRODUCTIVITY_BENCHMARK", "productivity_copilot")
+IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME") or os.getenv("IMAGE_NAME")
 MAX_STEPS = 10
 TEMPERATURE = 0.7
 MAX_TOKENS = 150
-SUCCESS_SCORE_THRESHOLD = 0.1
+SUCCESS_SCORE_THRESHOLD = 0.5
 
 SYSTEM_PROMPT = textwrap.dedent(
     """
@@ -46,7 +52,7 @@ def log_step(step: int, action: str, reward: float, done: bool, error: Optional[
 
 def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> None:
     rewards_str = ",".join(f"{r:.2f}" for r in rewards)
-    print(f"[END] success={str(success).lower()} steps={steps} score={score:.3f} rewards={rewards_str}", flush=True)
+    print(f"[END] success={str(success).lower()} steps={steps} score={score:.2f} rewards={rewards_str}", flush=True)
 
 def build_user_prompt(step: int, obs_dict: dict, last_reward: float, history: List[str]) -> str:
     history_block = "\n".join(history[-4:]) if history else "None"
@@ -76,19 +82,25 @@ def get_model_message(client: OpenAI, step: int, obs_dict: dict, last_reward: fl
         )
         text = (completion.choices[0].message.content or "").strip()
         return text if text else "WAIT|"
-    except Exception as exc:
-        print(f"[DEBUG] Model request failed: {exc}", flush=True)
+    except Exception:
         return "WAIT|"
+
+
+def normalize_result(result: Any) -> SimpleNamespace:
+    if hasattr(result, "observation"):
+        observation = result.observation
+        reward = result.reward
+        done = result.done
+    else:
+        observation = result
+        reward = getattr(result, "reward", None)
+        done = getattr(result, "done", False)
+
+    return SimpleNamespace(observation=observation, reward=reward, done=done)
 
 async def main() -> None:
     client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
-    
-    # Check if we should use docker image or local class
-    image_name = os.getenv("IMAGE_NAME")
-    if image_name:
-        env = await ProductivityEnv.from_docker_image(image_name)
-    else:
-        env = ProductivityEnv(task_name=TASK_NAME)
+    env = None
 
     history: List[str] = []
     rewards: List[float] = []
@@ -99,8 +111,19 @@ async def main() -> None:
     log_start(task=TASK_NAME, env=BENCHMARK, model=MODEL_NAME)
 
     try:
-        result = await env.reset()
-        last_obs = result.observation.dict()
+        if IMAGE_NAME:
+            env = await EnvClient.from_docker_image(
+                IMAGE_NAME,
+                env_vars={"PRODUCTIVITY_TASK": TASK_NAME},
+            )
+            result = await env.reset(task_name=TASK_NAME)
+        else:
+            with contextlib.redirect_stdout(io.StringIO()):
+                env = ProductivityEnv(task_name=TASK_NAME)
+            result = normalize_result(env.reset(task_name=TASK_NAME))
+
+        result = normalize_result(result)
+        last_obs = result.observation.model_dump()
         last_reward = 0.0
 
         for step in range(1, MAX_STEPS + 1):
@@ -116,7 +139,13 @@ async def main() -> None:
             if action_type not in valid_actions:
                 action_type = "WAIT"
 
-            result = await env.step(ProductivityAction(action_type=action_type, message=message))
+            if IMAGE_NAME:
+                result = await env.step(ProductivityAction(action_type=action_type, message=message))
+            else:
+                result = normalize_result(
+                    env.step(ProductivityAction(action_type=action_type, message=message))
+                )
+            result = normalize_result(result)
             obs = result.observation
 
             reward = result.reward or 0.0
@@ -125,7 +154,7 @@ async def main() -> None:
 
             rewards.append(reward)
             steps_taken = step
-            last_obs = obs.dict()
+            last_obs = obs.model_dump()
             last_reward = reward
 
             log_step(step=step, action=action_type, reward=reward, done=done, error=error)
@@ -135,20 +164,16 @@ async def main() -> None:
             if done:
                 break
 
-        # Calculate score (normalized)
-        # Assume max reward per step is 0.1 from the base reward calculation.
-        MAX_TOTAL_REWARD = MAX_STEPS * 0.1
-        score = sum(rewards) / MAX_TOTAL_REWARD if MAX_TOTAL_REWARD > 0 else 0.0
+        score = max(rewards) if rewards else 0.0
         score = min(max(score, 0.0), 1.0)
         success = score >= SUCCESS_SCORE_THRESHOLD
 
     finally:
         try:
-            # Safely close if required
-            if hasattr(env, 'close'):
+            if env is not None and hasattr(env, "close"):
                 await env.close()
-        except Exception as e:
-            print(f"[DEBUG] env.close() error: {e}", flush=True)
+        except Exception:
+            pass
         log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
 
 if __name__ == "__main__":

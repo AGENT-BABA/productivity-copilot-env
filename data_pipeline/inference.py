@@ -56,7 +56,7 @@ class CopilotModels:
     def load(self):
         if self._loaded:
             return
-        print("Loading Copilot models…")
+        print("Loading Copilot models...")
 
         self.failure_model  = joblib.load(ARTIFACTS / "failure_predictor.pkl")
         self.scaler         = joblib.load(ARTIFACTS / "feature_scaler.pkl")
@@ -69,7 +69,7 @@ class CopilotModels:
 
         self._load_rag()
         self._loaded = True
-        print("✓ All models loaded.")
+        print("Loaded all models.")
 
     def _load_rag(self):
         try:
@@ -83,9 +83,9 @@ class CopilotModels:
                 settings=Settings(anonymized_telemetry=False),
             )
             self._collection = client.get_collection("productivity_coach")
-            print(f"✓ RAG vector store loaded ({self._collection.count()} chunks)")
+            print(f"RAG vector store loaded ({self._collection.count()} chunks)")
         except Exception as e:
-            print(f"⚠ RAG not available: {e}. Persuasion will work without retrieval context.")
+            print(f"RAG not available: {e}. Persuasion will work without retrieval context.")
             self._collection = None
             self._embedder = None
 

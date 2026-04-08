@@ -16,12 +16,15 @@ dependencies = [
     "scikit-learn",
     "joblib",
     "sentence-transformers",
-    "chromadb"
+    "chromadb",
+    "fastapi",
+    "uvicorn",
+    "openai",
+    "huggingface_hub"
 ]
 
 [project.optional-dependencies]
-ml = ["fastapi", "uvicorn", "openai"]
+ml = []
 
 [project.scripts]
 server = "server.app:main"
-
