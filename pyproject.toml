@@ -15,8 +15,6 @@ dependencies = [
     "numpy",
     "scikit-learn",
     "joblib",
-    "sentence-transformers",
-    "chromadb",
     "fastapi",
     "uvicorn",
     "openai",
