@@ -150,7 +150,7 @@ async def main() -> None:
 
             reward = result.reward or 0.0
             done = result.done
-            error = None
+            error = getattr(obs, "last_action_error", None)
 
             rewards.append(reward)
             steps_taken = step

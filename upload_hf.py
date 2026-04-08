@@ -7,6 +7,7 @@ def upload_workspace():
     token = os.environ["HF_TOKEN"]
     ignore_dirs = {".venv", "__pycache__", ".git"}
     ignore_exts = {".pyc", ".pyo"}
+    ignore_files = {".env"}
     
     print(f"Connecting to Hugging Face: {repo_id}...")
     
@@ -15,6 +16,9 @@ def upload_workspace():
         dirs[:] = [d for d in dirs if d not in ignore_dirs]
         
         for file in files:
+            if file in ignore_files:
+                continue
+
             _, ext = os.path.splitext(file)
             if ext in ignore_exts:
                 continue
