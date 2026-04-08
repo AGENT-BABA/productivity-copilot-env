@@ -25,4 +25,4 @@ ENV PORT=7860
 EXPOSE 7860
 
 # Run the OpenEnv server
-CMD ["uv", "run", "server"]
+CMD ["uvicorn", "server.app:app", "--host", "0.0.0.0", "--port", "7860"]
