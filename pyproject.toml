@@ -28,3 +28,9 @@ ml = []
 
 [project.scripts]
 server = "server.app:main"
+
+[tool.setuptools]
+py-modules = []
+
+[tool.setuptools.packages.find]
+include = ["productivity_env", "productivity_env.*", "data_pipeline", "data_pipeline.*"]
