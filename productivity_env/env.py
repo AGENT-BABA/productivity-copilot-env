@@ -126,8 +126,8 @@ class ProductivityEnv(Environment[ProductivityAction, ProductivityObservation, P
         if not self.state_data:
             self.reset()
 
-        fp_res = copilot.predict_failure(self.state_data)
-        dist_res = copilot.score_distraction(self.state_data)
+        fp_res = self._safe_predict_failure()
+        dist_res = self._safe_score_distraction()
 
         return ProductivityObservation(
             time_of_day_hour=float(self.state_data["time_of_day_hour"]),
@@ -142,6 +142,36 @@ class ProductivityEnv(Environment[ProductivityAction, ProductivityObservation, P
             deadline_days_remaining=float(self.state_data["deadline_days_remaining"]),
             failure_probability=float(fp_res["failure_probability"]),
         )
+
+    def _safe_predict_failure(self) -> Dict[str, Any]:
+        try:
+            return copilot.predict_failure(self.state_data)
+        except Exception as exc:
+            print(f"Warning: failure model unavailable, using heuristic score. Error: {exc}")
+            stress = float(self.state_data.get("stress_level", 5.0)) / 10.0
+            distractions = min(float(self.state_data.get("distraction_events", 0)) / 20.0, 1.0)
+            deadline_pressure = max(0.0, 1.0 - min(float(self.state_data.get("deadline_days_remaining", 3.0)) / 3.0, 1.0))
+            motivation = 1.0 - min(float(self.state_data.get("motivation_level", 5.0)) / 10.0, 1.0)
+            risk_score = max(0.0, min(1.0, 0.35 * stress + 0.25 * distractions + 0.25 * deadline_pressure + 0.15 * motivation))
+            return {
+                "failure_probability": round(risk_score, 4),
+                "risk_level": "high" if risk_score >= 0.65 else "medium" if risk_score >= 0.40 else "low",
+                "should_intervene": risk_score >= 0.65,
+            }
+
+    def _safe_score_distraction(self) -> Dict[str, Any]:
+        try:
+            return copilot.score_distraction(self.state_data)
+        except Exception as exc:
+            print(f"Warning: distraction model unavailable, using heuristic score. Error: {exc}")
+            distractions = min(float(self.state_data.get("distraction_events", 0)) / 20.0, 1.0)
+            social = min(float(self.state_data.get("social_media_minutes_before", 0)) / 120.0, 1.0)
+            focus = 1.0 - min(max(float(self.state_data.get("focus_score", 0.5)), 0.0), 1.0)
+            score = max(0.0, min(1.0, 0.45 * distractions + 0.35 * social + 0.20 * focus))
+            return {
+                "distraction_score": round(score, 4),
+                "level": "high" if score >= 0.65 else "medium" if score >= 0.35 else "low",
+            }
 
     def step(
         self,
