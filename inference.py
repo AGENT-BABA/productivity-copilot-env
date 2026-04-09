@@ -86,6 +86,31 @@ def get_model_message(client: OpenAI, step: int, obs_dict: dict, last_reward: fl
         return "WAIT|"
 
 
+def create_client() -> OpenAI:
+    if "API_BASE_URL" in os.environ and "API_KEY" in os.environ:
+        return OpenAI(
+            base_url=os.environ["API_BASE_URL"],
+            api_key=os.environ["API_KEY"],
+        )
+    return OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
+
+
+def warmup_llm_proxy(client: OpenAI) -> None:
+    try:
+        client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[
+                {"role": "system", "content": "Reply with exactly WAIT|warmup"},
+                {"role": "user", "content": "warmup"},
+            ],
+            temperature=0,
+            max_tokens=8,
+            stream=False,
+        )
+    except Exception:
+        pass
+
+
 def normalize_result(result: Any) -> SimpleNamespace:
     if hasattr(result, "observation"):
         observation = result.observation
@@ -111,7 +136,8 @@ async def main() -> None:
     log_start(task=TASK_NAME, env=BENCHMARK, model=MODEL_NAME)
 
     try:
-        client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
+        client = create_client()
+        warmup_llm_proxy(client)
 
         if IMAGE_NAME:
             env = await EnvClient.from_docker_image(
