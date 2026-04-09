@@ -13,6 +13,82 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), ".")))
 
 from data_pipeline.inference import copilot
 
+TASK_CONFIGS: Dict[str, Dict[str, Any]] = {
+    "triage": {
+        "session_duration_minutes": 180,
+        "break_count": 0,
+        "social_media_minutes_before": 45,
+        "task_complexity": 4,
+        "work_style_score": 0.5,
+        "time_of_day_hour": 15,
+        "day_of_week": 3,
+        "stress_level": 7,
+        "sleep_hours": 6,
+        "distraction_events": 10,
+        "deadline_days_remaining": 1.0,
+        "previous_completion_rate": 0.6,
+        "focus_score": 0.3,
+        "motivation_level": 4,
+        "study_hours_weekly": 15,
+        "current_task": "Write Final Report",
+    },
+    "schedule_optimization": {
+        "session_duration_minutes": 60,
+        "break_count": 3,
+        "social_media_minutes_before": 10,
+        "task_complexity": 5,
+        "work_style_score": 0.9,
+        "time_of_day_hour": 10,
+        "day_of_week": 1,
+        "stress_level": 4,
+        "sleep_hours": 8,
+        "distraction_events": 2,
+        "deadline_days_remaining": 0.5,
+        "previous_completion_rate": 0.9,
+        "focus_score": 0.8,
+        "motivation_level": 6,
+        "study_hours_weekly": 40,
+        "current_task": "Code Review",
+    },
+    "distraction_mitigation": {
+        "session_duration_minutes": 240,
+        "break_count": 1,
+        "social_media_minutes_before": 120,
+        "task_complexity": 2,
+        "work_style_score": 0.2,
+        "time_of_day_hour": 18,
+        "day_of_week": 5,
+        "stress_level": 5,
+        "sleep_hours": 4,
+        "distraction_events": 20,
+        "deadline_days_remaining": 2.0,
+        "previous_completion_rate": 0.5,
+        "focus_score": 0.2,
+        "motivation_level": 2,
+        "study_hours_weekly": 5,
+        "current_task": "Update Documentation",
+    },
+}
+
+DEFAULT_TASK_STATE: Dict[str, Any] = {
+    "session_duration_minutes": 120,
+    "break_count": 2,
+    "social_media_minutes_before": 15,
+    "task_complexity": 3,
+    "work_style_score": 0.5,
+    "time_of_day_hour": 10,
+    "day_of_week": 1,
+    "stress_level": 5,
+    "sleep_hours": 7,
+    "distraction_events": 5,
+    "deadline_days_remaining": 3.0,
+    "previous_completion_rate": 0.7,
+    "focus_score": 0.6,
+    "motivation_level": 6,
+    "study_hours_weekly": 20,
+    "current_task": "General Work",
+}
+
 
 class ProductivityEnv(Environment[ProductivityAction, ProductivityObservation, ProductivityState]):
     def __init__(self, task_name: str = "triage"):
@@ -22,6 +98,7 @@ class ProductivityEnv(Environment[ProductivityAction, ProductivityObservation, P
         self.max_steps = 10
         self.current_step = 0
         self.episode_id: Optional[str] = None
+        self.focus_history: list[float] = []
         try:
             copilot.load()
         except Exception:
@@ -35,91 +112,23 @@ class ProductivityEnv(Environment[ProductivityAction, ProductivityObservation, P
     ) -> ProductivityObservation:
         self.current_step = 0
         self.episode_id = episode_id
+        self.focus_history = []
         task_name = kwargs.get("task_name", self.task_name)
         if task_name:
             self.task_name = str(task_name)
 
-        if self.task_name == "triage":
-            self.state_data = {
-                "session_duration_minutes": 180,
-                "break_count": 0,
-                "social_media_minutes_before": 45,
-                "task_complexity": 4,
-                "work_style_score": 0.5,
-                "time_of_day_hour": 15,
-                "day_of_week": 3,
-                "stress_level": 7,
-                "sleep_hours": 6,
-                "distraction_events": 10,
-                "deadline_days_remaining": 1.0,
-                "previous_completion_rate": 0.6,
-                "focus_score": 0.3,
-                "motivation_level": 4,
-                "study_hours_weekly": 15,
-                "current_task": "Write Final Report",
-            }
-        elif self.task_name == "schedule_optimization":
-            self.state_data = {
-                "session_duration_minutes": 60,
-                "break_count": 3,
-                "social_media_minutes_before": 10,
-                "task_complexity": 5,
-                "work_style_score": 0.9,
-                "time_of_day_hour": 10,
-                "day_of_week": 1,
-                "stress_level": 4,
-                "sleep_hours": 8,
-                "distraction_events": 2,
-                "deadline_days_remaining": 0.5,
-                "previous_completion_rate": 0.9,
-                "focus_score": 0.8,
-                "motivation_level": 6,
-                "study_hours_weekly": 40,
-                "current_task": "Code Review",
-            }
-        elif self.task_name == "distraction_mitigation":
-            self.state_data = {
-                "session_duration_minutes": 240,
-                "break_count": 1,
-                "social_media_minutes_before": 120,
-                "task_complexity": 2,
-                "work_style_score": 0.2,
-                "time_of_day_hour": 18,
-                "day_of_week": 5,
-                "stress_level": 5,
-                "sleep_hours": 4,
-                "distraction_events": 20,
-                "deadline_days_remaining": 2.0,
-                "previous_completion_rate": 0.5,
-                "focus_score": 0.2,
-                "motivation_level": 2,
-                "study_hours_weekly": 5,
-                "current_task": "Update Documentation",
-            }
-        else:
-            self.state_data = {
-                "session_duration_minutes": 120,
-                "break_count": 2,
-                "social_media_minutes_before": 15,
-                "task_complexity": 3,
-                "work_style_score": 0.5,
-                "time_of_day_hour": 10,
-                "day_of_week": 1,
-                "stress_level": 5,
-                "sleep_hours": 7,
-                "distraction_events": 5,
-                "deadline_days_remaining": 3.0,
-                "previous_completion_rate": 0.7,
-                "focus_score": 0.6,
-                "motivation_level": 6,
-                "study_hours_weekly": 20,
-                "current_task": "General Work",
-            }
+        self.state_data = dict(TASK_CONFIGS.get(self.task_name, DEFAULT_TASK_STATE))
 
         obs = self._get_obs()
-        obs.reward = 0.0
+        self.focus_history.append(obs.focus_score)
+        obs.reward = self._compute_reward(obs)
         obs.done = False
-        obs.metadata = {"task_name": self.task_name, "episode_id": self.episode_id, "seed": seed}
+        obs.metadata = {
+            "task_name": self.task_name,
+            "episode_id": self.episode_id,
+            "seed": seed,
+            "available_tasks": list(TASK_CONFIGS.keys()),
+        }
         return obs
 
     def _get_obs(self) -> ProductivityObservation:
@@ -204,9 +213,8 @@ class ProductivityEnv(Environment[ProductivityAction, ProductivityObservation, P
             self.state_data["stress_level"] += 0.5
 
         obs = self._get_obs()
-        reward = (1.0 - obs.failure_probability) * 0.1
-        if obs.stress_level >= 8.0:
-            reward -= 0.05
+        self.focus_history.append(obs.focus_score)
+        reward = self._compute_reward(obs)
 
         obs.reward = reward
         obs.done = self.current_step >= self.max_steps
@@ -216,6 +224,21 @@ class ProductivityEnv(Environment[ProductivityAction, ProductivityObservation, P
             "timeout_s": timeout_s,
         }
         return obs
+
+    def _compute_reward(self, obs: ProductivityObservation) -> float:
+        if self.task_name == "triage":
+            reward = 0.15 + 0.7 * (1.0 - obs.failure_probability)
+        elif self.task_name == "schedule_optimization":
+            stress_bonus = max(0.0, 1.0 - max(obs.stress_level - 7.0, 0.0) / 3.0)
+            reward = 0.1 + 0.5 * (1.0 - obs.failure_probability) + 0.3 * stress_bonus
+        elif self.task_name == "distraction_mitigation":
+            avg_focus = sum(self.focus_history) / max(len(self.focus_history), 1)
+            focus_bonus = max(0.0, 1.0 - avg_focus)
+            reward = 0.1 + 0.35 * (1.0 - obs.failure_probability) + 0.35 * focus_bonus
+        else:
+            reward = 0.15 + 0.6 * (1.0 - obs.failure_probability)
+
+        return min(max(reward, 0.01), 0.99)
 
     @property
     def state(self) -> ProductivityState:
