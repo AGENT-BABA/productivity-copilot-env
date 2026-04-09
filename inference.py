@@ -12,9 +12,9 @@ from openenv.core import EnvClient
 
 from productivity_env import ProductivityAction, ProductivityEnv
 
-API_KEY = os.getenv("API_KEY") or os.getenv("HF_TOKEN")
-API_BASE_URL = os.getenv("API_BASE_URL") or "https://router.huggingface.co/v1"
-MODEL_NAME = os.getenv("MODEL_NAME") or "Qwen/Qwen2.5-72B-Instruct"
+API_KEY = os.environ["API_KEY"] if "API_KEY" in os.environ else os.getenv("HF_TOKEN")
+API_BASE_URL = os.environ["API_BASE_URL"] if "API_BASE_URL" in os.environ else "https://router.huggingface.co/v1"
+MODEL_NAME = os.environ["MODEL_NAME"] if "MODEL_NAME" in os.environ else "Qwen/Qwen2.5-72B-Instruct"
 TASK_NAME = os.getenv("PRODUCTIVITY_TASK", "triage")
 BENCHMARK = os.getenv("PRODUCTIVITY_BENCHMARK", "productivity_copilot")
 IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME") or os.getenv("IMAGE_NAME")
