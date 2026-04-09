@@ -99,7 +99,7 @@ def normalize_result(result: Any) -> SimpleNamespace:
     return SimpleNamespace(observation=observation, reward=reward, done=done)
 
 async def main() -> None:
-    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
+    client = None
     env = None
 
     history: List[str] = []
@@ -111,6 +111,8 @@ async def main() -> None:
     log_start(task=TASK_NAME, env=BENCHMARK, model=MODEL_NAME)
 
     try:
+        client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
+
         if IMAGE_NAME:
             env = await EnvClient.from_docker_image(
                 IMAGE_NAME,
@@ -167,6 +169,8 @@ async def main() -> None:
         score = max(rewards) if rewards else 0.0
         score = min(max(score, 0.0), 1.0)
         success = score >= SUCCESS_SCORE_THRESHOLD
+    except Exception:
+        success = False
 
     finally:
         try:
@@ -177,4 +181,7 @@ async def main() -> None:
         log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except Exception:
+        log_end(success=False, steps=0, score=0.0, rewards=[])
