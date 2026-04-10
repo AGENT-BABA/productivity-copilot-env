@@ -4,6 +4,8 @@ import os
 import sys
 
 from openenv.core import Environment
+from openenv.core.env_server.types import EnvironmentMetadata
+from openenv.core.rubrics import Rubric
 
 from .models import ProductivityAction, ProductivityObservation, ProductivityState
 
@@ -90,9 +92,61 @@ DEFAULT_TASK_STATE: Dict[str, Any] = {
 }
 
 
+def _clamp_task_score(score: float) -> float:
+    return min(max(score, 0.01), 0.99)
+
+
+def _compute_task_score(
+    task_name: str,
+    obs: ProductivityObservation,
+    focus_history: list[float],
+) -> float:
+    if task_name == "triage":
+        score = 0.15 + 0.7 * (1.0 - obs.failure_probability)
+    elif task_name == "schedule_optimization":
+        stress_bonus = max(0.0, 1.0 - max(obs.stress_level - 7.0, 0.0) / 3.0)
+        score = 0.1 + 0.5 * (1.0 - obs.failure_probability) + 0.3 * stress_bonus
+    elif task_name == "distraction_mitigation":
+        avg_focus = sum(focus_history) / max(len(focus_history), 1)
+        focus_bonus = max(0.0, 1.0 - avg_focus)
+        score = 0.1 + 0.35 * (1.0 - obs.failure_probability) + 0.35 * focus_bonus
+    else:
+        score = 0.15 + 0.6 * (1.0 - obs.failure_probability)
+
+    return _clamp_task_score(score)
+
+
+class _TaskRubric(Rubric):
+    def __init__(self, env: "ProductivityEnv", task_name: str):
+        super().__init__()
+        self.env = env
+        self.task_name = task_name
+
+    def forward(self, action: Any, observation: ProductivityObservation) -> float:
+        return _compute_task_score(
+            self.task_name,
+            observation,
+            self.env.focus_history,
+        )
+
+
+class ProductivityTaskRubric(Rubric):
+    def __init__(self, env: "ProductivityEnv"):
+        super().__init__()
+        self.env = env
+        for task_name in TASK_CONFIGS:
+            setattr(self, task_name, _TaskRubric(env, task_name))
+
+    def forward(self, action: Any, observation: ProductivityObservation) -> float:
+        rubric = getattr(self, self.env.task_name, None)
+        if isinstance(rubric, Rubric):
+            return rubric(action, observation)
+        return _compute_task_score(self.env.task_name, observation, self.env.focus_history)
+
+
 class ProductivityEnv(Environment[ProductivityAction, ProductivityObservation, ProductivityState]):
     def __init__(self, task_name: str = "triage"):
-        super().__init__()
+        super().__init__(rubric=ProductivityTaskRubric(self))
         self.task_name = task_name
         self.state_data: Dict[str, Any] = {}
         self.max_steps = 10
@@ -110,6 +164,7 @@ class ProductivityEnv(Environment[ProductivityAction, ProductivityObservation, P
         episode_id: Optional[str] = None,
         **kwargs: Any,
     ) -> ProductivityObservation:
+        self._reset_rubric()
         self.current_step = 0
         self.episode_id = episode_id
         self.focus_history = []
@@ -121,7 +176,7 @@ class ProductivityEnv(Environment[ProductivityAction, ProductivityObservation, P
 
         obs = self._get_obs()
         self.focus_history.append(obs.focus_score)
-        obs.reward = self._compute_reward(obs)
+        obs.reward = _compute_task_score(self.task_name, obs, self.focus_history)
         obs.done = False
         obs.metadata = {
             "task_name": self.task_name,
@@ -214,7 +269,7 @@ class ProductivityEnv(Environment[ProductivityAction, ProductivityObservation, P
 
         obs = self._get_obs()
         self.focus_history.append(obs.focus_score)
-        reward = self._compute_reward(obs)
+        reward = self._apply_rubric(action, obs)
 
         obs.reward = reward
         obs.done = self.current_step >= self.max_steps
@@ -222,23 +277,21 @@ class ProductivityEnv(Environment[ProductivityAction, ProductivityObservation, P
             "task_name": self.task_name,
             "step_count": self.current_step,
             "timeout_s": timeout_s,
+            "available_tasks": list(TASK_CONFIGS.keys()),
         }
         return obs
 
-    def _compute_reward(self, obs: ProductivityObservation) -> float:
-        if self.task_name == "triage":
-            reward = 0.15 + 0.7 * (1.0 - obs.failure_probability)
-        elif self.task_name == "schedule_optimization":
-            stress_bonus = max(0.0, 1.0 - max(obs.stress_level - 7.0, 0.0) / 3.0)
-            reward = 0.1 + 0.5 * (1.0 - obs.failure_probability) + 0.3 * stress_bonus
-        elif self.task_name == "distraction_mitigation":
-            avg_focus = sum(self.focus_history) / max(len(self.focus_history), 1)
-            focus_bonus = max(0.0, 1.0 - avg_focus)
-            reward = 0.1 + 0.35 * (1.0 - obs.failure_probability) + 0.35 * focus_bonus
-        else:
-            reward = 0.15 + 0.6 * (1.0 - obs.failure_probability)
-
-        return min(max(reward, 0.01), 0.99)
+    def get_metadata(self) -> EnvironmentMetadata:
+        return EnvironmentMetadata(
+            name="productivity-copilot-env",
+            description=(
+                "A productivity coaching environment with three graded tasks: "
+                "triage, schedule_optimization, and distraction_mitigation."
+            ),
+            version="0.1.0",
+            author="AGENT-BABA",
+            documentation_url="https://github.com/AGENT-BABA/productivity-copilot-env",
+        )
 
     @property
     def state(self) -> ProductivityState:
