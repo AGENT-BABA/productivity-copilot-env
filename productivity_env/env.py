@@ -143,6 +143,16 @@ class ProductivityTaskRubric(Rubric):
             return rubric(action, observation)
         return _compute_task_score(self.env.task_name, observation, self.env.focus_history)
 
+    def sync_scores(self, observation: ProductivityObservation) -> dict[str, float]:
+        scores: dict[str, float] = {}
+        for task_name in TASK_CONFIGS:
+            rubric = getattr(self, task_name)
+            score = _compute_task_score(task_name, observation, self.env.focus_history)
+            rubric.last_score = score
+            scores[task_name] = score
+        self.last_score = scores.get(self.env.task_name)
+        return scores
+
 
 class ProductivityEnv(Environment[ProductivityAction, ProductivityObservation, ProductivityState]):
     def __init__(self, task_name: str = "triage"):
@@ -176,13 +186,15 @@ class ProductivityEnv(Environment[ProductivityAction, ProductivityObservation, P
 
         obs = self._get_obs()
         self.focus_history.append(obs.focus_score)
-        obs.reward = _compute_task_score(self.task_name, obs, self.focus_history)
+        rubric_scores = self.rubric.sync_scores(obs) if isinstance(self.rubric, ProductivityTaskRubric) else {}
+        obs.reward = rubric_scores.get(self.task_name, _compute_task_score(self.task_name, obs, self.focus_history))
         obs.done = False
         obs.metadata = {
             "task_name": self.task_name,
             "episode_id": self.episode_id,
             "seed": seed,
             "available_tasks": list(TASK_CONFIGS.keys()),
+            "task_scores": rubric_scores,
         }
         return obs
 
@@ -269,6 +281,7 @@ class ProductivityEnv(Environment[ProductivityAction, ProductivityObservation, P
 
         obs = self._get_obs()
         self.focus_history.append(obs.focus_score)
+        rubric_scores = self.rubric.sync_scores(obs) if isinstance(self.rubric, ProductivityTaskRubric) else {}
         reward = self._apply_rubric(action, obs)
 
         obs.reward = reward
@@ -278,6 +291,7 @@ class ProductivityEnv(Environment[ProductivityAction, ProductivityObservation, P
             "step_count": self.current_step,
             "timeout_s": timeout_s,
             "available_tasks": list(TASK_CONFIGS.keys()),
+            "task_scores": rubric_scores,
         }
         return obs
 
