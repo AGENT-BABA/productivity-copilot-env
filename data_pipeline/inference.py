@@ -57,15 +57,34 @@ class CopilotModels:
         if self._loaded:
             return
         print("Loading Copilot models...")
+        self.failure_model = None
+        self.scaler = None
+        self.style_model = None
+        self.style_encoder = None
+        self.distraction_model = None
+        self._features = {
+            "failure_predictor": {"features": []},
+            "work_style_classifier": {"features": []},
+            "distraction_scorer": {"features": []},
+        }
+        self._collection = None
+        self._embedder = None
+        self._ml_available = False
 
-        self.failure_model  = joblib.load(ARTIFACTS / "failure_predictor.pkl")
-        self.scaler         = joblib.load(ARTIFACTS / "feature_scaler.pkl")
-        self.style_model    = joblib.load(ARTIFACTS / "work_style_classifier.pkl")
-        self.style_encoder  = joblib.load(ARTIFACTS / "work_style_label_encoder.pkl")
-        self.distraction_model = joblib.load(ARTIFACTS / "distraction_scorer.pkl")
+        try:
+            self.failure_model = joblib.load(ARTIFACTS / "failure_predictor.pkl")
+            self.scaler = joblib.load(ARTIFACTS / "feature_scaler.pkl")
+            self.style_model = joblib.load(ARTIFACTS / "work_style_classifier.pkl")
+            self.style_encoder = joblib.load(ARTIFACTS / "work_style_label_encoder.pkl")
+            self.distraction_model = joblib.load(ARTIFACTS / "distraction_scorer.pkl")
 
-        with open(FEATURE_JSON) as f:
-            self._features = json.load(f)
+            with open(FEATURE_JSON) as f:
+                self._features = json.load(f)
+
+            self._ml_available = True
+            print("Loaded ML artifacts.")
+        except Exception as e:
+            print(f"Warning: ML artifacts unavailable, using heuristic fallbacks. Error: {e}")
 
         self._load_rag()
         self._loaded = True
@@ -134,6 +153,21 @@ class CopilotModels:
             "study_hours_weekly":          20,
         }
         row = {**DEFAULTS, **user_data}
+        if not self._ml_available or self.failure_model is None or self.scaler is None or not self.failure_features:
+            stress = float(row["stress_level"]) / 10.0
+            distractions = min(float(row["distraction_events"]) / 20.0, 1.0)
+            deadline_pressure = max(0.0, 1.0 - min(float(row["deadline_days_remaining"]) / 3.0, 1.0))
+            motivation = 1.0 - min(float(row["motivation_level"]) / 10.0, 1.0)
+            risk_score = max(0.0, min(1.0, 0.35 * stress + 0.25 * distractions + 0.25 * deadline_pressure + 0.15 * motivation))
+            return {
+                "failure_probability": round(risk_score, 4),
+                "risk_level": (
+                    "high"   if risk_score >= 0.65 else
+                    "medium" if risk_score >= 0.40 else
+                    "low"
+                ),
+                "should_intervene": risk_score >= 0.65,
+            }
         X = np.array([[row.get(f, DEFAULTS.get(f, 0)) for f in self.failure_features]])
         X_scaled = self.scaler.transform(X)
 
@@ -163,6 +197,28 @@ class CopilotModels:
             "deadline_days_remaining": 3,
         }
         row = {**DEFAULTS, **user_data}
+        if not self._ml_available or self.style_model is None or self.style_encoder is None or not self.style_features:
+            stress = float(row["stress_level"])
+            distraction_events = float(row["distraction_events"])
+            completion = float(row["previous_completion_rate"])
+            if stress <= 4 and completion >= 0.8:
+                label = "turtle"
+                confidence = 0.72
+            elif distraction_events >= 8 and stress >= 6:
+                label = "hare"
+                confidence = 0.68
+            else:
+                label = "hybrid"
+                confidence = 0.64
+            return {
+                "work_style": label,
+                "confidence": confidence,
+                "scores": {
+                    "turtle": 0.2 if label != "turtle" else confidence,
+                    "hare": 0.2 if label != "hare" else confidence,
+                    "hybrid": 0.2 if label != "hybrid" else confidence,
+                },
+            }
         X = np.array([[row.get(f, DEFAULTS.get(f, 0)) for f in self.style_features]])
         pred = self.style_model.predict(X)[0]
         proba = self.style_model.predict_proba(X)[0]
@@ -187,6 +243,19 @@ class CopilotModels:
             "focus_score": 0.65,
         }
         row = {**DEFAULTS, **user_data}
+        if not self._ml_available or self.distraction_model is None or not self.distraction_features:
+            distractions = min(float(row["distraction_events"]) / 20.0, 1.0)
+            social = min(float(row["social_media_minutes_before"]) / 120.0, 1.0)
+            focus = 1.0 - min(max(float(row["focus_score"]), 0.0), 1.0)
+            score = max(0.0, min(1.0, 0.45 * distractions + 0.35 * social + 0.20 * focus))
+            return {
+                "distraction_score": round(score, 4),
+                "level": (
+                    "high"   if score >= 0.65 else
+                    "medium" if score >= 0.35 else
+                    "low"
+                ),
+            }
         X = np.array([[row.get(f, DEFAULTS.get(f, 0)) for f in self.distraction_features]])
         score = float(np.clip(self.distraction_model.predict(X)[0], 0, 1))
 
